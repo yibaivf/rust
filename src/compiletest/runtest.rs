@@ -106,17 +106,13 @@ fn run_cfail_test(config: &Config, props: &TestProps, testfile: &Path) {
 }
 
 fn run_rfail_test(config: &Config, props: &TestProps, testfile: &Path) {
-    let proc_res = if !config.jit {
-        let proc_res = compile_test(config, props, testfile);
+    let mut proc_res = compile_test(config, props, testfile);
 
-        if !proc_res.status.success() {
-            fatal_proc_rec("compilation failed!", &proc_res);
-        }
+    if !proc_res.status.success() {
+        fatal_proc_rec("compilation failed!", &proc_res);
+    }
 
-        exec_compiled_test(config, props, testfile)
-    } else {
-        jit_test(config, props, testfile)
-    };
+    proc_res = exec_compiled_test(config, props, testfile);
 
     // The value our Makefile configures valgrind to return on failure
     const VALGRIND_ERR: i32 = 100;
@@ -141,24 +137,16 @@ fn check_correct_failure_status(proc_res: &ProcRes) {
 }
 
 fn run_rpass_test(config: &Config, props: &TestProps, testfile: &Path) {
-    if !config.jit {
-        let mut proc_res = compile_test(config, props, testfile);
+    let mut proc_res = compile_test(config, props, testfile);
 
-        if !proc_res.status.success() {
-            fatal_proc_rec("compilation failed!", &proc_res);
-        }
+    if !proc_res.status.success() {
+        fatal_proc_rec("compilation failed!", &proc_res);
+    }
 
-        proc_res = exec_compiled_test(config, props, testfile);
+    proc_res = exec_compiled_test(config, props, testfile);
 
-        if !proc_res.status.success() {
-            fatal_proc_rec("test run failed!", &proc_res);
-        }
-    } else {
-        let proc_res = jit_test(config, props, testfile);
-
-        if !proc_res.status.success() {
-            fatal_proc_rec("jit failed!", &proc_res);
-        }
+    if !proc_res.status.success() {
+        fatal_proc_rec("test run failed!", &proc_res);
     }
 }
 
@@ -1150,20 +1138,10 @@ impl fmt::Display for Status {
 
 fn compile_test(config: &Config, props: &TestProps,
                 testfile: &Path) -> ProcRes {
-    compile_test_(config, props, testfile, &[])
-}
-
-fn jit_test(config: &Config, props: &TestProps, testfile: &Path) -> ProcRes {
-    compile_test_(config, props, testfile, &["--jit".to_string()])
-}
-
-fn compile_test_(config: &Config, props: &TestProps,
-                 testfile: &Path, extra_args: &[String]) -> ProcRes {
     let aux_dir = aux_output_dir_name(config, testfile);
     // FIXME (#9639): This needs to handle non-utf8 paths
     let mut link_args = vec!("-L".to_string(),
                              aux_dir.to_str().unwrap().to_string());
-    link_args.extend(extra_args.iter().cloned());
     let args = make_compile_args(config,
                                  props,
                                  link_args,
@@ -1172,7 +1150,7 @@ fn compile_test_(config: &Config, props: &TestProps,
 }
 
 fn document(config: &Config, props: &TestProps,
-            testfile: &Path, extra_args: &[String]) -> (ProcRes, PathBuf) {
+            testfile: &Path) -> (ProcRes, PathBuf) {
     let aux_dir = aux_output_dir_name(config, testfile);
     let out_dir = output_base_name(config, testfile);
     let _ = fs::remove_dir_all(&out_dir);
@@ -1182,7 +1160,6 @@ fn document(config: &Config, props: &TestProps,
                         "-o".to_string(),
                         out_dir.to_str().unwrap().to_string(),
                         testfile.to_str().unwrap().to_string()];
-    args.extend(extra_args.iter().cloned());
     args.extend(split_maybe_args(&props.compile_flags).into_iter());
     let args = ProcArgs {
         prog: config.rustdoc_path.to_str().unwrap().to_string(),
@@ -1843,7 +1820,7 @@ fn charset() -> &'static str {
 }
 
 fn run_rustdoc_test(config: &Config, props: &TestProps, testfile: &Path) {
-    let (proc_res, out_dir) = document(config, props, testfile, &[]);
+    let (proc_res, out_dir) = document(config, props, testfile);
     if !proc_res.status.success() {
         fatal_proc_rec("rustdoc failed!", &proc_res);
     }
